@@ -1,24 +1,14 @@
 // The exported code uses Tailwind CSS. Install Tailwind CSS in your dev environment to ensure all styles work.
 import React, { useState, useEffect, ChangeEvent, useCallback, ReactElement } from 'react';
-import Button from 'antd/lib/button';
-import Input from 'antd/lib/input';
-import Menu from 'antd/lib/menu';
-import notification from 'antd/lib/notification';
-import Modal from 'antd/lib/modal';
-import Tooltip from 'antd/lib/tooltip';
-import Drawer from 'antd/lib/drawer';
-import Row from 'antd/lib/row';
-import Col from 'antd/lib/col';
-import Carousel from 'antd/lib/carousel';
-import Badge from 'antd/lib/badge';
-import Card from 'antd/lib/card';
-import Layout from 'antd/lib/layout';
-import Divider from 'antd/lib/divider';
-import InputNumber from 'antd/lib/input-number';
-import Empty from 'antd/lib/empty';
-import { ShoppingCartOutlined, SearchOutlined, MenuOutlined, HomeOutlined, AppstoreOutlined, InfoCircleOutlined, PhoneOutlined, MailOutlined, DeleteOutlined, RightOutlined, LeftOutlined, PlusOutlined, MinusOutlined, ShopOutlined, FacebookOutlined, InstagramOutlined, TwitterOutlined, LinkedinOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { Layout, Menu, Button, Card, Modal, Form, Input, message, Spin, notification, Tooltip, Drawer, Row, Col, Carousel, Badge, Divider, InputNumber, Empty } from 'antd';
+import { ShoppingCartOutlined, SearchOutlined, MenuOutlined, HomeOutlined, AppstoreOutlined, InfoCircleOutlined, PhoneOutlined, MailOutlined, DeleteOutlined, RightOutlined, LeftOutlined, PlusOutlined, MinusOutlined, ShopOutlined, FacebookOutlined, InstagramOutlined, TwitterOutlined, LinkedinOutlined, CheckCircleFilled, SettingOutlined } from '@ant-design/icons';
 import * as echarts from 'echarts';
 import logo from './assets/melfa-logo.png';
+import { auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import Login from './components/Login';
+import Settings from './components/Settings';
+
 const { Header, Content, Footer } = Layout;
 const { Meta } = Card;
 interface Product {
@@ -68,9 +58,10 @@ const animateScroll = (scrollState: ScrollState, currentTime: number): void => {
   }
 };
 
-const App: React.FC = (): ReactElement => {
+const App: React.FC = (): ReactElement | null => {
   const [mobileMenuVisible, setMobileMenuVisible] = useState<boolean>(false);
   const [cartVisible, setCartVisible] = useState<boolean>(false);
+  const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
   const [brandModalVisible, setBrandModalVisible] = useState<boolean>(false);
@@ -82,6 +73,8 @@ const App: React.FC = (): ReactElement => {
   const [activeQuickLink, setActiveQuickLink] = useState<string | null>(null);
   const [privacyModalVisible, setPrivacyModalVisible] = useState<boolean>(false);
   const [infoModal, setInfoModal] = useState<InfoModalState>({visible: false, title: '', content: null});
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const rawProducts = [
     {
       id: 1,
@@ -206,6 +199,9 @@ const App: React.FC = (): ReactElement => {
   };
   const toggleCart = () => {
     setCartVisible(!cartVisible);
+  };
+  const toggleSettings = () => {
+    setSettingsVisible(!settingsVisible);
   };
   const bannerImages = [
     {
@@ -475,10 +471,35 @@ const App: React.FC = (): ReactElement => {
     window.requestAnimationFrame((time) => animateScroll(scrollState, time));
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthenticated(!!user);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh' 
+      }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <>
       <Layout className="min-h-screen">
-        {/* Header */}
         <Header id="header" className="bg-white shadow-md flex items-center justify-between px-4 md:px-8 fixed w-full z-10 h-20">
           <div className="flex items-center">
             <img src={logo} alt="Melfa Oto Logo" className="h-12 w-auto mr-3" style={{objectFit: 'contain'}} />
@@ -497,6 +518,7 @@ const App: React.FC = (): ReactElement => {
               <h1 className="text-lg font-bold text-red-600 m-0">MELFA OTO</h1>
             </div>
           </div>
+
           <div className="hidden md:flex items-center space-x-6">
             <Menu mode="horizontal" className="border-0">
               <Menu.SubMenu 
@@ -862,27 +884,35 @@ const App: React.FC = (): ReactElement => {
               </Menu.SubMenu>
             </Menu>
           </div>
-          {/* Arama kutusu */}
-          <div className="relative">
-            <Input
-              placeholder="Ürün ara..."
-              prefix={<SearchOutlined />}
-              value={searchTerm}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setSearchTerm(e.target.value);
-                setSearchResultsVisible(e.target.value.length > 0);
-              }}
-              onFocus={() => searchTerm.length > 0 && setSearchResultsVisible(true)}
-              onBlur={() => setTimeout(() => setSearchResultsVisible(false), 200)}
-              className="w-64"
-            />
-            {searchResultsVisible && searchTerm && (
-              <div className="absolute top-full left-0 w-full bg-white shadow-lg rounded-lg mt-1 z-50">
-                {/* Arama sonuçları buraya gelecek */}
-              </div>
-            )}
-          </div>
+
           <div className="flex items-center space-x-4">
+            <div className="relative">
+              <Input
+                placeholder="Ürün ara..."
+                prefix={<SearchOutlined />}
+                value={searchTerm}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setSearchTerm(e.target.value);
+                  setSearchResultsVisible(e.target.value.length > 0);
+                }}
+                onFocus={() => searchTerm.length > 0 && setSearchResultsVisible(true)}
+                onBlur={() => setTimeout(() => setSearchResultsVisible(false), 200)}
+                className="w-64"
+              />
+              {searchResultsVisible && searchTerm && (
+                <div className="absolute top-full left-0 w-full bg-white shadow-lg rounded-lg mt-1 z-50">
+                  {/* Arama sonuçları buraya gelecek */}
+                </div>
+              )}
+            </div>
+
+            <Button
+              type="text"
+              icon={<SettingOutlined className="text-xl text-red-600" />}
+              onClick={toggleSettings}
+              className="flex items-center justify-center h-10 w-10 cursor-pointer !rounded-button whitespace-nowrap"
+            />
+
             <Badge count={cart.length} className="cursor-pointer" onClick={toggleCart}>
               <Button
                 type="text"
@@ -892,6 +922,7 @@ const App: React.FC = (): ReactElement => {
             </Badge>
           </div>
         </Header>
+
         {/* Mobile Menu Drawer */}
         <Drawer
           title="Menü"
@@ -921,6 +952,7 @@ const App: React.FC = (): ReactElement => {
             suffix={<SearchOutlined className="text-gray-400" />}
           />
         </Drawer>
+
         {/* Cart Drawer */}
         <Drawer
           title="Sepetim"
@@ -928,22 +960,20 @@ const App: React.FC = (): ReactElement => {
           onClose={toggleCart}
           visible={cartVisible}
           width={320}
-          footer={
-            cart.length > 0 ? (
-              <div>
-                <div className="flex justify-between mb-4">
-                  <span className="font-semibold">Toplam:</span>
-                  <span className="font-bold text-red-600">{calculateTotal().toLocaleString('tr-TR')} ₺</span>
-                </div>
-                <Button type="primary" block className="bg-green-600 hover:bg-green-700 !rounded-button whitespace-nowrap">
-                  Siparişi Tamamla
-                </Button>
-                <Button block className="mt-2 !rounded-button whitespace-nowrap">
-                  Sepete Git
-                </Button>
+          footer={cart.length > 0 ? (
+            <div>
+              <div className="flex justify-between mb-4">
+                <span className="font-semibold">Toplam:</span>
+                <span className="font-bold text-red-600">{calculateTotal().toLocaleString('tr-TR')} ₺</span>
               </div>
-            ) : null
-          }
+              <Button type="primary" block className="bg-green-600 hover:bg-green-700 !rounded-button whitespace-nowrap">
+                Siparişi Tamamla
+              </Button>
+              <Button block className="mt-2 !rounded-button whitespace-nowrap">
+                Sepete Git
+              </Button>
+            </div>
+          ) : null}
         >
           {cart.length > 0 ? (
             <div>
@@ -994,6 +1024,21 @@ const App: React.FC = (): ReactElement => {
             />
           )}
         </Drawer>
+
+        {/* Settings Drawer */}
+        <Drawer
+          title="Ayarlar"
+          placement="right"
+          onClose={toggleSettings}
+          visible={settingsVisible}
+          width={320}
+        >
+          <Settings onLogout={() => {
+            setSettingsVisible(false);
+            setIsAuthenticated(false);
+          }} />
+        </Drawer>
+
         <Content className="pt-20">
           {/* Banner Carousel */}
           <Carousel
