@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.product-carousel .slick-dots {
+  bottom: 4px;
+}
+.product-carousel .slick-dots li button {
+  background: white !important;
+  opacity: 0.5;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.product-carousel .slick-dots li.slick-active button {
+  opacity: 1;
+  background: white !important;
+}
+.banner-carousel .slick-dots-bottom {
+  bottom: 20px;
+}
+.banner-carousel .slick-dots li button {
+  background: white !important;
+  opacity: 0.5;
+}
+.banner-carousel .slick-dots li.slick-active button {
+  opacity: 1;
+  background: white !important;
+}
+.carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.7) !important;
+  border: none !important;
+  border-radius: 50% !important;
+  color: #333 !important;
+}
+.carousel-arrow:hover {
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+.carousel-arrow-prev {
+  left: 20px;
+}
+.carousel-arrow-next {
+  right: 20px;
+}
+.ant-input-search .ant-input {
+  border-radius: 20px;
+}
+.ant-input-search .ant-input-group-addon {
+  background: transparent;
+}
+.ant-input-search .ant-input-search-button {
+  border-radius: 0 20px 20px 0;
+}
+/* Hide number input arrows */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
