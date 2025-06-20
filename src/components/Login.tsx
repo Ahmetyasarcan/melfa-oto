@@ -4,10 +4,13 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   sendEmailVerification,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
 } from 'firebase/auth';
 import { Form, Input, Button, Card, message, Tabs, Checkbox, Typography, Modal, Alert, Row, Col, Space, Divider } from 'antd';
-import { MailOutlined, LockOutlined, CheckCircleOutlined, WarningOutlined, PhoneOutlined, EnvironmentOutlined, UserOutlined } from '@ant-design/icons';
+import { MailOutlined, LockOutlined, PhoneOutlined, EnvironmentOutlined, WarningOutlined } from '@ant-design/icons';
 import logo from '../assets/melfa-logo.png';
 
 const { TabPane } = Tabs;
@@ -22,9 +25,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [form] = Form.useForm();
   const [verificationEmailSent, setVerificationEmailSent] = useState(false);
 
-  const handleLogin = async (values: { email: string; password: string }) => {
+  const handleLogin = async (values: { email: string; password: string; remember: boolean }) => {
     setLoading(true);
     try {
+      await setPersistence(auth, values.remember ? browserLocalPersistence : browserSessionPersistence);
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
@@ -159,6 +163,21 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                     <EnvironmentOutlined style={{ fontSize: '20px', color: '#dc2626', marginRight: '10px', paddingTop: '2px' }} />
                     <Text style={{ fontSize: '16px', color: '#555' }}>Fevzipaşa Mah. 48046 Sk. No:29 Seyhan/Adana</Text>
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', marginTop: 8 }}>
+                    <a
+                      href="https://wa.me/905416322634?text=Merhaba%2C%20yedek%20par%C3%A7a%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', background: '#25D366', borderRadius: '50%', width: 28, height: 28, justifyContent: 'center', marginRight: 8 }}>
+                        <svg width="18" height="18" viewBox="0 0 32 32" fill="white" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.832 4.584 2.236 6.393L4 29l7.828-2.05C13.416 27.168 14.684 27.5 16 27.5c6.627 0 12-5.373 12-12S22.627 3 16 3zm0 22c-1.18 0-2.332-.207-3.418-.615l-.244-.09-4.646 1.217 1.24-4.527-.16-.234C7.207 18.332 7 17.18 7 16c0-5.514 4.486-10 10-10s10 4.486 10 10-4.486 10-10 10zm5.29-7.71c-.29-.145-1.715-.848-1.98-.945-.266-.098-.46-.145-.655.145-.195.29-.75.945-.92 1.14-.17.195-.34.22-.63.073-.29-.145-1.225-.452-2.334-1.44-.862-.77-1.444-1.72-1.615-2.01-.17-.29-.018-.447.127-.592.13-.13.29-.34.435-.51.145-.17.193-.29.29-.485.097-.195.048-.365-.024-.51-.073-.145-.655-1.58-.897-2.17-.237-.57-.48-.492-.655-.5-.17-.007-.365-.01-.56-.01-.195 0-.51.073-.78.365-.27.29-1.02.995-1.02 2.425 0 1.43 1.04 2.81 1.185 3.005.145.195 2.05 3.13 5.07 4.27.71.244 1.263.39 1.695.5.712.18 1.36.155 1.87.094.57-.067 1.715-.7 1.96-1.38.24-.68.24-1.265.17-1.38-.07-.115-.26-.18-.55-.325z"/>
+                        </svg>
+                      </span>
+                      <Text style={{ fontSize: '16px', color: '#25D366', fontWeight: 500 }}>WhatsApp ile yaz</Text>
+                    </a>
+                  </div>
                 </Space>
                 <Divider style={{ margin: '30px 0' }}>Veya</Divider>
               </div>
@@ -209,6 +228,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         placeholder="Şifre"
                         size="large"
                       />
+                    </Form.Item>
+
+                    <Form.Item name="remember" valuePropName="checked" initialValue={false}>
+                      <Checkbox>Beni Hatırla</Checkbox>
                     </Form.Item>
 
                     <Form.Item>
@@ -299,8 +322,9 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                     >
                       <Checkbox>
                         <Text type="secondary">
-                          <a 
-                            href="#" 
+                          <button 
+                            type="button" 
+                            style={{ background: 'none', border: 'none', padding: 0, color: '#1677ff', textDecoration: 'underline', cursor: 'pointer' }} 
                             onClick={(e) => {
                               e.preventDefault();
                               Modal.info({
@@ -324,7 +348,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                             }}
                           >
                             KVKK metnini okudum ve onaylıyorum
-                          </a>
+                          </button>
                         </Text>
                       </Checkbox>
                     </Form.Item>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, message, Space, Typography, Modal, Alert, Divider } from 'antd';
+import { Card, Form, Input, Button, message, Space, Typography, Modal, Alert } from 'antd';
 import { auth } from '../firebase';
 import { 
   updateProfile, 
@@ -11,7 +11,7 @@ import {
   signOut 
 } from 'firebase/auth';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 const { confirm } = Modal;
 
 interface SettingsProps {
@@ -180,8 +180,18 @@ const Settings: React.FC<SettingsProps> = ({ onLogout }) => {
     setLoading(true);
     try {
       await signOut(auth);
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      if (window.indexedDB) {
+        try {
+          window.indexedDB.deleteDatabase('firebaseLocalStorageDb');
+        } catch (e) {}
+      }
       message.success('Başarıyla çıkış yapıldı.');
       onLogout();
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     } catch (error: any) {
       message.error('Çıkış yapılırken hata oluştu: ' + error.message);
     } finally {

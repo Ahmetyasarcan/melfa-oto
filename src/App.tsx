@@ -1,13 +1,13 @@
 // The exported code uses Tailwind CSS. Install Tailwind CSS in your dev environment to ensure all styles work.
 import React, { useState, useEffect, ChangeEvent, useCallback, ReactElement } from 'react';
-import { Layout, Menu, Button, Card, Modal, Form, Input, message, Spin, notification, Tooltip, Drawer, Row, Col, Carousel, Badge, Divider, InputNumber, Empty } from 'antd';
-import { ShoppingCartOutlined, SearchOutlined, MenuOutlined, HomeOutlined, AppstoreOutlined, InfoCircleOutlined, PhoneOutlined, MailOutlined, DeleteOutlined, RightOutlined, LeftOutlined, PlusOutlined, MinusOutlined, ShopOutlined, FacebookOutlined, InstagramOutlined, TwitterOutlined, LinkedinOutlined, CheckCircleFilled, SettingOutlined } from '@ant-design/icons';
-import * as echarts from 'echarts';
+import { Layout, Menu, Button, Card, Modal, Form, Input, message, notification, Drawer, Row, Col, Carousel, Badge, Divider, Empty } from 'antd';
+import { ShoppingCartOutlined, SearchOutlined, MenuOutlined, HomeOutlined, AppstoreOutlined, InfoCircleOutlined, PhoneOutlined, MailOutlined, DeleteOutlined, RightOutlined, LeftOutlined, PlusOutlined, MinusOutlined, FacebookOutlined, InstagramOutlined, TwitterOutlined, LinkedinOutlined, CheckCircleFilled, SettingOutlined } from '@ant-design/icons';
 import logo from './assets/melfa-logo.png';
 import { auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import Login from './components/Login';
 import Settings from './components/Settings';
+import soldoutImg from './assets/soldout.jpeg';
 
 const { Header, Content, Footer } = Layout;
 const { Meta } = Card;
@@ -19,6 +19,7 @@ interface Product {
   brand: string;
   images: string[];
   stock: number;
+  isNew?: boolean; // yeni ürün işareti
 }
 interface CartItem extends Product {
   quantity: number;
@@ -38,6 +39,7 @@ interface RawProduct {
   brand: string;
   image: string;
   stock: number;
+  isNew?: boolean; // yeni ürün işareti
 }
 
 interface ScrollState {
@@ -74,43 +76,51 @@ const App: React.FC = (): ReactElement | null => {
   const [privacyModalVisible, setPrivacyModalVisible] = useState<boolean>(false);
   const [infoModal, setInfoModal] = useState<InfoModalState>({visible: false, title: '', content: null});
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 8; // Her sayfada gösterilecek ürün sayısı
+  const [hasMoreProducts, setHasMoreProducts] = useState(true);
+  const [totalProductCount, setTotalProductCount] = useState(0);
+  const [showOnlyNew, setShowOnlyNew] = useState(false);
   const rawProducts = [
     {
       id: 1,
       name: "Fiat Egea Ön Tampon",
-      price: 1250,
+      price: 8500,
       category: "Kaporta",
       brand: "Fiat",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20front%20bumper%20for%20Fiat%20Egea%20car%2C%20automotive%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20automotive%20component%2C%20car%20body%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=1&orientation=landscape",
-      stock: 15
+      stock: 120,
+      isNew: false
     },
     {
       id: 2,
       name: "Renault Clio Motor Contası",
-      price: 350,
+      price: 6200,
       category: "Mekanik",
       brand: "Renault",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20engine%20gasket%20for%20Renault%20Clio%2C%20automotive%20engine%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20engine%20seal%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=2&orientation=landscape",
-      stock: 23
+      stock: 80,
+      isNew: false
     },
     {
       id: 3,
       name: "Dacia Duster Ön Far",
-      price: 875,
+      price: 9500,
       category: "Kaporta",
       brand: "Dacia",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20headlight%20for%20Dacia%20Duster%20SUV%2C%20automotive%20lighting%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20front%20light%20component%2C%20car%20exterior%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=3&orientation=landscape",
-      stock: 8
+      stock: 60,
+      isNew: false
     },
     {
       id: 4,
       name: "Alfa Romeo Giulietta Fren Balatası",
-      price: 450,
+      price: 5400,
       category: "Mekanik",
       brand: "Alfa Romeo",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20brake%20pad%20set%20for%20Alfa%20Romeo%20Giulietta%2C%20automotive%20braking%20system%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20car%20brake%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=4&orientation=landscape",
-      stock: 32
+      stock: 32,
+      isNew: false
     },
     {
       id: 5,
@@ -119,7 +129,8 @@ const App: React.FC = (): ReactElement | null => {
       category: "Kaporta",
       brand: "Jeep",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20side%20mirror%20for%20Jeep%20Renegade%20SUV%2C%20automotive%20exterior%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20car%20mirror%20component%2C%20car%20body%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=5&orientation=landscape",
-      stock: 11
+      stock: 11,
+      isNew: false
     },
     {
       id: 6,
@@ -128,7 +139,8 @@ const App: React.FC = (): ReactElement | null => {
       category: "Mekanik",
       brand: "Fiat",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20radiator%20for%20Fiat%20Doblo%20van%2C%20automotive%20cooling%20system%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20engine%20cooling%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=6&orientation=landscape",
-      stock: 19
+      stock: 19,
+      isNew: false
     },
     {
       id: 7,
@@ -137,7 +149,8 @@ const App: React.FC = (): ReactElement | null => {
       category: "Kaporta",
       brand: "Renault",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20rear%20bumper%20for%20Renault%20Megane%20car%2C%20automotive%20body%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component%2C%20car%20body%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=7&orientation=landscape",
-      stock: 7
+      stock: 7,
+      isNew: false
     },
     {
       id: 8,
@@ -146,7 +159,184 @@ const App: React.FC = (): ReactElement | null => {
       category: "Mekanik",
       brand: "Jeep",
       image: "https://readdy.ai/api/search-image?query=A%20high-quality%20oil%20filter%20for%20Jeep%20Compass%20SUV%2C%20automotive%20engine%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20engine%20maintenance%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=8&orientation=landscape",
-      stock: 45
+      stock: 45,
+      isNew: false
+    },
+    {
+      id: 17,
+      name: "Ford Focus Ön Süspansiyon",
+      price: 1850,
+      category: "Mekanik",
+      brand: "Ford",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 18,
+      name: "Hyundai i20 Debriyaj Seti",
+      price: 1650,
+      category: "Mekanik",
+      brand: "Hyundai",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 19,
+      name: "Kia Sportage Arka Tampon",
+      price: 1950,
+      category: "Kaporta",
+      brand: "Kia",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 20,
+      name: "Mazda 3 Motor Yağı Filtresi",
+      price: 180,
+      category: "Mekanik",
+      brand: "Mazda",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 21,
+      name: "Nissan Qashqai Ön Far",
+      price: 1350,
+      category: "Kaporta",
+      brand: "Nissan",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 22,
+      name: "Suzuki Vitara Radyatör",
+      price: 1450,
+      category: "Mekanik",
+      brand: "Suzuki",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 23,
+      name: "Mitsubishi L200 Alternatör",
+      price: 1550,
+      category: "Mekanik",
+      brand: "Mitsubishi",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 24,
+      name: "Subaru Forester Direksiyon Kutusu",
+      price: 2250,
+      category: "Mekanik",
+      brand: "Subaru",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 25,
+      name: "Renault Megane Ön Süspansiyon",
+      price: 1750,
+      category: "Mekanik",
+      brand: "Renault",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 26,
+      name: "Dacia Duster Debriyaj Seti",
+      price: 1550,
+      category: "Mekanik",
+      brand: "Dacia",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 27,
+      name: "Seat Leon Arka Tampon",
+      price: 1850,
+      category: "Kaporta",
+      brand: "Seat",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 28,
+      name: "Skoda Octavia Motor Yağı Filtresi",
+      price: 190,
+      category: "Mekanik",
+      brand: "Skoda",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 29,
+      name: "Volvo XC60 Ön Far",
+      price: 1650,
+      category: "Kaporta",
+      brand: "Volvo",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 30,
+      name: "Land Rover Discovery Radyatör",
+      price: 1950,
+      category: "Mekanik",
+      brand: "Land Rover",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 31,
+      name: "Jaguar XE Alternatör",
+      price: 1850,
+      category: "Mekanik",
+      brand: "Jaguar",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
+    },
+    {
+      id: 32,
+      name: "Mini Cooper Direksiyon Kutusu",
+      price: 2150,
+      category: "Mekanik",
+      brand: "Mini",
+      image: soldoutImg,
+      images: [soldoutImg],
+      stock: 0,
+      isNew: true
     }
   ];
   const transformProduct = (product: RawProduct): Product => {
@@ -156,18 +346,22 @@ const App: React.FC = (): ReactElement | null => {
       baseImage.includes('seq=') ? baseImage.replace(/seq=\d+/, 'seq=101') : baseImage + '&seq=101',
       baseImage.includes('seq=') ? baseImage.replace(/seq=\d+/, 'seq=102') : baseImage + '&seq=102',
     ];
-    return { ...product, images };
+    return { ...product, images, isNew: product.isNew };
   };
   const [products, setProducts] = useState<Product[]>(
     rawProducts.map(transformProduct)
   );
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [productDetailVisible, setProductDetailVisible] = useState(false);
   const [mailModalVisible, setMailModalVisible] = useState(false);
   const [mailName, setMailName] = useState('');
   const [mailEmail, setMailEmail] = useState('');
   const [mailMessage, setMailMessage] = useState('');
   const [showMailSuccess, setShowMailSuccess] = useState(false);
+  const [orderModalVisible, setOrderModalVisible] = useState(false);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderForm] = Form.useForm();
+  const [orderSummary, setOrderSummary] = useState<any>(null);
+  const [orderSummaryModalVisible, setOrderSummaryModalVisible] = useState(false);
 
   const handleMenuInfo = (title: string, content: React.ReactNode) => {
     setInfoModal({ visible: true, title, content });
@@ -224,12 +418,12 @@ const App: React.FC = (): ReactElement | null => {
     {
       name: "Kaporta Parçaları",
       description: "Tampon, far, kaput ve daha fazlası",
-      image: "https://readdy.ai/api/search-image?query=A%20collection%20of%20automotive%20body%20parts%20including%20bumpers%2C%20headlights%2C%20hoods%20displayed%20professionally%20against%20a%20clean%20white%20background.%20The%20parts%20are%20arranged%20to%20showcase%20their%20design%20and%20quality.%20Professional%20product%20photography%2C%20with%20perfect%20lighting%20to%20highlight%20the%20contours%20and%20finish%20of%20these%20exterior%20car%20components&width=600&height=400&seq=12&orientation=landscape"
+      image: "https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?auto=format&fit=crop&w=600&q=80" // Unsplash: araba kaporta
     },
     {
       name: "Mekanik Parçalar",
       description: "Motor, şanzıman, fren ve süspansiyon parçaları",
-      image: "https://readdy.ai/api/search-image?query=A%20collection%20of%20automotive%20mechanical%20parts%20including%20engine%20components%2C%20transmission%20parts%20etc%20displayed%20professionally%20against%20a%20clean%20white%20background.%20The%20parts%20are%20arranged%20to%20showcase%20their%20precision%20engineering%20and%20quality.%20Professional%20product%20photography%2C%20with%20perfect%20lighting%20to%20highlight%20the%20metallic%20surfaces%20and%20technical%20details&width=600&height=400&seq=13&orientation=landscape"
+      image: "https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&w=600&q=80" // Unsplash: otomotiv motor bloğu
     }
   ];
   const initialBrands = [
@@ -244,7 +438,8 @@ const App: React.FC = (): ReactElement | null => {
           category: "Kaporta",
           brand: "Fiat",
           image: "https://readdy.ai/api/search-image?query=Front%20bumper%20for%20Fiat%20Egea%20car%2C%20automotive%20part%20on%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20car%20component&width=400&height=300&seq=15&orientation=landscape",
-          stock: 15
+          stock: 15,
+          isNew: false
         },
         {
           id: 102,
@@ -253,7 +448,8 @@ const App: React.FC = (): ReactElement | null => {
           category: "Mekanik",
           brand: "Fiat",
           image: "https://readdy.ai/api/search-image?query=Radiator%20for%20Fiat%20Doblo%20van%2C%20automotive%20cooling%20system%20part%20on%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20engine%20cooling%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=16&orientation=landscape",
-          stock: 19
+          stock: 19,
+          isNew: false
         }
       ]
     },
@@ -268,7 +464,8 @@ const App: React.FC = (): ReactElement | null => {
           category: "Mekanik",
           brand: "Renault",
           image: "https://readdy.ai/api/search-image?query=Engine%20gasket%20for%20Renault%20Clio%2C%20automotive%20engine%20part%20on%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component&width=400&height=300&seq=18&orientation=landscape",
-          stock: 23
+          stock: 23,
+          isNew: false
         },
         {
           id: 202,
@@ -277,7 +474,8 @@ const App: React.FC = (): ReactElement | null => {
           category: "Kaporta",
           brand: "Renault",
           image: "https://readdy.ai/api/search-image?query=Rear%20bumper%20for%20Renault%20Megane%2C%20automotive%20body%20part%20on%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component&width=400&height=300&seq=19&orientation=landscape",
-          stock: 7
+          stock: 7,
+          isNew: false
         }
       ]
     },
@@ -292,7 +490,8 @@ const App: React.FC = (): ReactElement | null => {
           category: "Kaporta",
           brand: "Dacia",
           image: "https://readdy.ai/api/search-image?query=Headlight%20for%20Dacia%20Duster%20SUV%2C%20automotive%20lighting%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20front%20light%20component&width=400&height=300&seq=21&orientation=landscape",
-          stock: 8
+          stock: 8,
+          isNew: false
         }
       ]
     },
@@ -307,7 +506,8 @@ const App: React.FC = (): ReactElement | null => {
           category: "Mekanik",
           brand: "Alfa Romeo",
           image: "https://readdy.ai/api/search-image?query=Brake%20pad%20set%20for%20Alfa%20Romeo%20Giulietta%2C%20automotive%20braking%20system%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20car%20brake%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=23&orientation=landscape",
-          stock: 32
+          stock: 32,
+          isNew: false
         }
       ]
     },
@@ -322,7 +522,8 @@ const App: React.FC = (): ReactElement | null => {
           category: "Kaporta",
           brand: "Jeep",
           image: "https://readdy.ai/api/search-image?query=Side%20mirror%20for%20Jeep%20Renegade%20SUV%2C%20automotive%20exterior%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20car%20mirror%20component%2C%20car%20body%20part%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=25&orientation=landscape",
-          stock: 11
+          stock: 11,
+          isNew: false
         }
       ]
     }
@@ -354,15 +555,480 @@ const App: React.FC = (): ReactElement | null => {
 
   // Ürünleri karıştır ve göster
   const shuffleAndShowProducts = () => {
-    const shuffledProducts = shuffleArray(products);
-    setDisplayedProducts(shuffledProducts);
+    if (!hasMoreProducts) return;
+    
+    const startIndex = (currentPage - 1) * productsPerPage;
+    const endIndex = startIndex + productsPerPage;
+    const shuffledProducts = shuffleArray(allProducts);
+    const newProducts = shuffledProducts.slice(startIndex, endIndex);
+    
+    if (newProducts.length === 0) {
+      setHasMoreProducts(false);
+      return;
+    }
+
+    setDisplayedProducts(prevProducts => [...prevProducts, ...newProducts]);
+    setCurrentPage(prev => prev + 1);
+  };
+
+  // Ürünleri göster
+  const showMoreProducts = () => {
+    if (!hasMoreProducts) return;
+    
+    const startIndex = (currentPage - 1) * productsPerPage;
+    const endIndex = startIndex + productsPerPage;
+    const newProducts = allProducts.slice(startIndex, endIndex);
+    
+    // 32. üründen sonra hasMoreProducts'ı false yap
+    if (displayedProducts.length + newProducts.length >= 32) {
+      setHasMoreProducts(false);
+    }
+
+    if (newProducts.length === 0) {
+      // Yeni ürünler ekle
+      const additionalProductsRaw = currentPage === 3 ? [
+        {
+          id: 17,
+          name: "Ford Focus Ön Süspansiyon",
+          price: 1850,
+          category: "Mekanik",
+          brand: "Ford",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 18,
+          name: "Hyundai i20 Debriyaj Seti",
+          price: 1650,
+          category: "Mekanik",
+          brand: "Hyundai",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 19,
+          name: "Kia Sportage Arka Tampon",
+          price: 1950,
+          category: "Kaporta",
+          brand: "Kia",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 20,
+          name: "Mazda 3 Motor Yağı Filtresi",
+          price: 180,
+          category: "Mekanik",
+          brand: "Mazda",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 21,
+          name: "Nissan Qashqai Ön Far",
+          price: 1350,
+          category: "Kaporta",
+          brand: "Nissan",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 22,
+          name: "Suzuki Vitara Radyatör",
+          price: 1450,
+          category: "Mekanik",
+          brand: "Suzuki",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 23,
+          name: "Mitsubishi L200 Alternatör",
+          price: 1550,
+          category: "Mekanik",
+          brand: "Mitsubishi",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 24,
+          name: "Subaru Forester Direksiyon Kutusu",
+          price: 2250,
+          category: "Mekanik",
+          brand: "Subaru",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 25,
+          name: "Renault Megane Ön Süspansiyon",
+          price: 1750,
+          category: "Mekanik",
+          brand: "Renault",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 26,
+          name: "Dacia Duster Debriyaj Seti",
+          price: 1550,
+          category: "Mekanik",
+          brand: "Dacia",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 27,
+          name: "Seat Leon Arka Tampon",
+          price: 1850,
+          category: "Kaporta",
+          brand: "Seat",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 28,
+          name: "Skoda Octavia Motor Yağı Filtresi",
+          price: 190,
+          category: "Mekanik",
+          brand: "Skoda",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 29,
+          name: "Volvo XC60 Ön Far",
+          price: 1650,
+          category: "Kaporta",
+          brand: "Volvo",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 30,
+          name: "Land Rover Discovery Radyatör",
+          price: 1950,
+          category: "Mekanik",
+          brand: "Land Rover",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 31,
+          name: "Jaguar XE Alternatör",
+          price: 1850,
+          category: "Mekanik",
+          brand: "Jaguar",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 32,
+          name: "Mini Cooper Direksiyon Kutusu",
+          price: 2150,
+          category: "Mekanik",
+          brand: "Mini",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        }
+      ] : currentPage === 2 ? [
+        // İkinci ek ürün seti (17-24)
+        {
+          id: 17,
+          name: "Ford Focus Ön Süspansiyon",
+          price: 1850,
+          category: "Mekanik",
+          brand: "Ford",
+          image: soldoutImg,
+          images: [soldoutImg],
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 18,
+          name: "Hyundai i20 Debriyaj Seti",
+          price: 1650,
+          category: "Mekanik",
+          brand: "Hyundai",
+          image: soldoutImg,
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 19,
+          name: "Kia Sportage Arka Tampon",
+          price: 1950,
+          category: "Kaporta",
+          brand: "Kia",
+          image: soldoutImg,
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 20,
+          name: "Mazda 3 Motor Yağı Filtresi",
+          price: 180,
+          category: "Mekanik",
+          brand: "Mazda",
+          image: soldoutImg,
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 21,
+          name: "Nissan Qashqai Ön Far",
+          price: 1350,
+          category: "Kaporta",
+          brand: "Nissan",
+          image: soldoutImg,
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 22,
+          name: "Suzuki Vitara Radyatör",
+          price: 1450,
+          category: "Mekanik",
+          brand: "Suzuki",
+          image: require('./assets/soldout.jpeg'),
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 23,
+          name: "Mitsubishi L200 Alternatör",
+          price: 1550,
+          category: "Mekanik",
+          brand: "Mitsubishi",
+          image: require('./assets/soldout.jpeg'),
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 24,
+          name: "Subaru Forester Direksiyon Kutusu",
+          price: 2250,
+          category: "Mekanik",
+          brand: "Subaru",
+          image: require('./assets/soldout.jpeg'),
+          stock: 0,
+          isNew: true
+        },
+        {
+          id: 25,
+          name: "Renault Megane Ön Süspansiyon",
+          price: 1750,
+          category: "Mekanik",
+          brand: "Renault",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20front%20suspension%20for%20Renault%20Megane%2C%20automotive%20suspension%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=47&orientation=landscape",
+          stock: 14,
+          isNew: true
+        },
+        {
+          id: 26,
+          name: "Dacia Duster Debriyaj Seti",
+          price: 1550,
+          category: "Mekanik",
+          brand: "Dacia",
+          image: "https://readdy.ai/api/search-image?query=A%20complete%20clutch%20kit%20for%20Dacia%20Duster%2C%20automotive%20transmission%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=48&orientation=landscape",
+          stock: 18,
+          isNew: true
+        },
+        {
+          id: 27,
+          name: "Seat Leon Arka Tampon",
+          price: 1850,
+          category: "Kaporta",
+          brand: "Seat",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20rear%20bumper%20for%20Seat%20Leon%2C%20automotive%20body%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=49&orientation=landscape",
+          stock: 11,
+          isNew: true
+        },
+        {
+          id: 28,
+          name: "Skoda Octavia Motor Yağı Filtresi",
+          price: 190,
+          category: "Mekanik",
+          brand: "Skoda",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20oil%20filter%20for%20Skoda%20Octavia%2C%20automotive%20engine%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=50&orientation=landscape",
+          stock: 22,
+          isNew: true
+        },
+        {
+          id: 29,
+          name: "Volvo XC60 Ön Far",
+          price: 1650,
+          category: "Kaporta",
+          brand: "Volvo",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20headlight%20for%20Volvo%20XC60%2C%20automotive%20lighting%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=51&orientation=landscape",
+          stock: 9,
+          isNew: true
+        },
+        {
+          id: 30,
+          name: "Land Rover Discovery Radyatör",
+          price: 1950,
+          category: "Mekanik",
+          brand: "Land Rover",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20radiator%20for%20Land%20Rover%20Discovery%2C%20automotive%20cooling%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=52&orientation=landscape",
+          stock: 7,
+          isNew: true
+        },
+        {
+          id: 31,
+          name: "Jaguar XE Alternatör",
+          price: 1850,
+          category: "Mekanik",
+          brand: "Jaguar",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20alternator%20for%20Jaguar%20XE%2C%20automotive%20electrical%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=53&orientation=landscape",
+          stock: 6,
+          isNew: true
+        },
+        {
+          id: 32,
+          name: "Mini Cooper Direksiyon Kutusu",
+          price: 2150,
+          category: "Mekanik",
+          brand: "Mini",
+          image: "https://readdy.ai/api/search-image?query=A%20steering%20gear%20box%20for%20Mini%20Cooper%2C%20automotive%20steering%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=54&orientation=landscape",
+          stock: 8,
+          isNew: true
+        }
+      ] : [
+        // Üçüncü ek ürün seti (25-32)
+        {
+          id: 25,
+          name: "Renault Megane Ön Süspansiyon",
+          price: 1750,
+          category: "Mekanik",
+          brand: "Renault",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20front%20suspension%20for%20Renault%20Megane%2C%20automotive%20suspension%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=47&orientation=landscape",
+          stock: 14,
+          isNew: true
+        },
+        {
+          id: 26,
+          name: "Dacia Duster Debriyaj Seti",
+          price: 1550,
+          category: "Mekanik",
+          brand: "Dacia",
+          image: "https://readdy.ai/api/search-image?query=A%20complete%20clutch%20kit%20for%20Dacia%20Duster%2C%20automotive%20transmission%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=48&orientation=landscape",
+          stock: 18,
+          isNew: true
+        },
+        {
+          id: 27,
+          name: "Seat Leon Arka Tampon",
+          price: 1850,
+          category: "Kaporta",
+          brand: "Seat",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20rear%20bumper%20for%20Seat%20Leon%2C%20automotive%20body%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=49&orientation=landscape",
+          stock: 11,
+          isNew: true
+        },
+        {
+          id: 28,
+          name: "Skoda Octavia Motor Yağı Filtresi",
+          price: 190,
+          category: "Mekanik",
+          brand: "Skoda",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20oil%20filter%20for%20Skoda%20Octavia%2C%20automotive%20engine%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=50&orientation=landscape",
+          stock: 22,
+          isNew: true
+        },
+        {
+          id: 29,
+          name: "Volvo XC60 Ön Far",
+          price: 1650,
+          category: "Kaporta",
+          brand: "Volvo",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20headlight%20for%20Volvo%20XC60%2C%20automotive%20lighting%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=51&orientation=landscape",
+          stock: 9,
+          isNew: true
+        },
+        {
+          id: 30,
+          name: "Land Rover Discovery Radyatör",
+          price: 1950,
+          category: "Mekanik",
+          brand: "Land Rover",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20radiator%20for%20Land%20Rover%20Discovery%2C%20automotive%20cooling%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=52&orientation=landscape",
+          stock: 7,
+          isNew: true
+        },
+        {
+          id: 31,
+          name: "Jaguar XE Alternatör",
+          price: 1850,
+          category: "Mekanik",
+          brand: "Jaguar",
+          image: "https://readdy.ai/api/search-image?query=A%20high-quality%20alternator%20for%20Jaguar%20XE%2C%20automotive%20electrical%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=53&orientation=landscape",
+          stock: 6,
+          isNew: true
+        },
+        {
+          id: 32,
+          name: "Mini Cooper Direksiyon Kutusu",
+          price: 2150,
+          category: "Mekanik",
+          brand: "Mini",
+          image: "https://readdy.ai/api/search-image?query=A%20steering%20gear%20box%20for%20Mini%20Cooper%2C%20automotive%20steering%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=54&orientation=landscape",
+          stock: 8,
+          isNew: true
+        }
+      ];
+
+      const transformedAdditionalProducts = additionalProductsRaw.map(transformProduct);
+      setAllProducts(prev => [...prev, ...transformedAdditionalProducts]);
+      setTotalProductCount(32); // Toplam ürün sayısını 32 olarak sabitle
+      setDisplayedProducts(prev => [...prev, ...transformedAdditionalProducts]);
+      setCurrentPage(prev => prev + 1);
+      return;
+    }
+
+    setDisplayedProducts(prevProducts => [...prevProducts, ...newProducts]);
+    setCurrentPage(prev => prev + 1);
   };
 
   // İlk yüklemede ürünleri ayarla
   useEffect(() => {
     const initialProducts = rawProducts.map(transformProduct);
     setAllProducts(initialProducts);
-    setDisplayedProducts(initialProducts);
+    setDisplayedProducts(initialProducts.slice(0, productsPerPage));
+    setCurrentPage(2); // İlk sayfa zaten gösterildi
+    setTotalProductCount(initialProducts.length + 16); // İlk ürünler + ek ürünler
   }, []);
 
   // Link tıklama işleyicisi
@@ -473,25 +1139,66 @@ const App: React.FC = (): ReactElement | null => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(!!user);
-      setIsLoading(false);
+      if (user) {
+        if (user.emailVerified) {
+          setIsAuthenticated(true);
+        } else {
+          auth.signOut();
+          setIsAuthenticated(false);
+        }
+      } else {
+        setIsAuthenticated(false);
+      }
     });
-
     return () => unsubscribe();
   }, []);
 
-  if (isLoading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh' 
-      }}>
-        <Spin size="large" />
-      </div>
-    );
-  }
+  const handleOrder = () => {
+    setOrderModalVisible(true);
+  };
+
+  const handleOrderSubmit = async () => {
+    try {
+      setOrderLoading(true);
+      const values = await orderForm.validateFields();
+      // Stok kontrolü
+      let stockError = false;
+      const updatedProducts = products.map(product => {
+        const cartItem = cart.find(item => item.id === product.id);
+        if (cartItem) {
+          if (product.stock < cartItem.quantity) {
+            stockError = true;
+          }
+          return {
+            ...product,
+            stock: product.stock - cartItem.quantity
+          };
+        }
+        return product;
+      });
+      if (stockError) {
+        message.error('Sepetteki bazı ürünlerin stoğu yetersiz!');
+        setOrderLoading(false);
+        return;
+      }
+      setProducts(updatedProducts);
+      // Sipariş özeti ve kodu hazırla
+      setOrderSummary({
+        ...values,
+        items: cart,
+        total: calculateTotal(),
+      });
+      setOrderSummaryModalVisible(true);
+      setCart([]);
+      setOrderModalVisible(false);
+      orderForm.resetFields();
+      message.success('Siparişiniz başarıyla alındı!');
+    } catch (e) {
+      // Form validasyon hatası
+    } finally {
+      setOrderLoading(false);
+    }
+  };
 
   if (!isAuthenticated) {
     return <Login onLoginSuccess={() => setIsAuthenticated(true)} />;
@@ -966,10 +1673,10 @@ const App: React.FC = (): ReactElement | null => {
                 <span className="font-semibold">Toplam:</span>
                 <span className="font-bold text-red-600">{calculateTotal().toLocaleString('tr-TR')} ₺</span>
               </div>
-              <Button type="primary" block className="bg-green-600 hover:bg-green-700 !rounded-button whitespace-nowrap">
-                Siparişi Tamamla
+              <Button type="primary" block className="bg-green-600 hover:bg-green-700 !rounded-button whitespace-nowrap" onClick={handleOrder}>
+                Sepeti Onayla
               </Button>
-              <Button block className="mt-2 !rounded-button whitespace-nowrap">
+              <Button block className="mt-2 !rounded-button whitespace-nowrap" onClick={toggleCart}>
                 Sepete Git
               </Button>
             </div>
@@ -1113,97 +1820,101 @@ const App: React.FC = (): ReactElement | null => {
                   <Col xs={24} md={12} key={index}>
                     <Card
                       hoverable
-                      className="overflow-hidden h-full"
-                      cover={
-                        <div className="h-64 overflow-hidden">
-                          <img
-                            alt={category.name}
-                            src={category.image}
-                            onError={e => { e.currentTarget.src = '/assets/no-image.png'; }}
-                            className="w-full h-full object-cover object-top transition-transform duration-500 hover:scale-105"
-                          />
-                        </div>
-                      }
+                      className="overflow-hidden h-full relative p-0 border-none shadow-md"
+                      bodyStyle={{ padding: 0 }}
+                      cover={null}
                     >
-                      <Card.Meta
-                        title={<span className="text-xl font-bold">{category.name}</span>}
-                        description={category.description}
-                      />
-                      <Button
-                        type="primary"
-                        className="mt-4 bg-red-600 hover:bg-red-700 !rounded-button whitespace-nowrap"
-                  onClick={() => {
-                          const categoryProducts = products.filter(p => p.category === category.name);
-                          Modal.info({
-                            title: `${category.name} Ürünleri`,
-                            width: 1000,
-                            icon: null,
-                            okText: 'Kapat',
-                            content: (
-                              <div className="py-4">
-                                <Row gutter={[24, 24]}>
-                                  {categoryProducts.map(product => (
-                                    <Col xs={24} sm={12} key={product.id}>
-                                      <Card
-                                        hoverable
-                                        className="h-full"
-                                        cover={
-                                          <Carousel autoplay className="product-carousel">
-                                            {product.images.map((imgSrc, imgIndex) => (
-                                              <div key={imgIndex}>
-                                                <img
-                                                  alt={`${product.name} - Görsel ${imgIndex + 1}`}
-                                                  src={imgSrc}
-                                                  onError={e => { e.currentTarget.src = '/assets/no-image.png'; }}
-                                                  className="w-full h-48 object-cover object-top"
-                                                />
-                                              </div>
-                                            ))}
-                                          </Carousel>
-                                        }
-                                      >
-                                        <Card.Meta
-                                          title={<span className="text-base font-semibold">{product.name}</span>}
-                                          description={
-                                            <div className="mt-2">
-                                              <div className="text-lg font-bold text-red-600 mb-2">
-                                                {product.price.toLocaleString('tr-TR')} ₺
-                                              </div>
-                                              <div className="flex items-center">
-                                                <span className={`w-3 h-3 rounded-full mr-2 ${product.stock > 0 ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                                <span className="text-sm text-gray-600">
-                                                  {product.stock > 0 ? `Stokta (${product.stock})` : 'Tükendi'}
-                                                </span>
-                                              </div>
-                                            </div>
-                                          }
-                                        />
-                                        <Button
-                                          type="primary"
-                                          block
-                                          onClick={() => {
-                                            addToCart(product);
-                                            notification.success({
-                                              message: 'Ürün sepete eklendi',
-                                              description: `${product.name} sepetinize eklendi.`,
-                                            });
-                                          }}
-                                          disabled={product.stock <= 0}
-                                          className="mt-4 bg-red-600 hover:bg-red-700 !rounded-button whitespace-nowrap"
-                                        >
-                                          Sepete Ekle
-                                        </Button>
-                                      </Card>
-                                    </Col>
-                                  ))}
-                                </Row>
-                              </div>
-                            )
-                          });
+                      <div
+                        className="h-64 w-full relative flex items-end"
+                        style={{
+                          backgroundImage: `url(${category.image})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          minHeight: '16rem',
+                          borderRadius: '12px 12px 0 0',
                         }}
                       >
-                        Kategoriyi Görüntüle
-                      </Button>
+                        <div className="absolute inset-0 bg-black/40 rounded-t-lg"></div>
+                        <div className="relative z-10 p-6">
+                          <div className="text-2xl font-bold text-white mb-2">{category.name}</div>
+                          <div className="text-white mb-4">{category.description}</div>
+                          <Button
+                            type="primary"
+                            className="bg-red-600 hover:bg-red-700 !rounded-button whitespace-nowrap"
+                            onClick={() => {
+                              const categoryProducts = products.filter(p => p.category === category.name);
+                              Modal.info({
+                                title: `${category.name} Ürünleri`,
+                                width: 1000,
+                                icon: null,
+                                okText: 'Kapat',
+                                content: (
+                                  <div className="py-4">
+                                    <Row gutter={[24, 24]}>
+                                      {categoryProducts.map(product => (
+                                        <Col xs={24} sm={12} key={product.id}>
+                                          <Card
+                                            hoverable
+                                            className="h-full"
+                                            cover={
+                                              <Carousel autoplay className="product-carousel">
+                                                {product.images.map((imgSrc, imgIndex) => (
+                                                  <div key={imgIndex}>
+                                                    <img
+                                                      alt={`${product.name} - Görsel ${imgIndex + 1}`}
+                                                      src={imgSrc}
+                                                      onError={e => { e.currentTarget.src = '/assets/no-image.png'; }}
+                                                      className="w-full h-48 object-cover object-top"
+                                                    />
+                                                  </div>
+                                                ))}
+                                              </Carousel>
+                                            }
+                                          >
+                                            <Card.Meta
+                                              title={<span className="text-base font-semibold">{product.name}</span>}
+                                              description={
+                                                <div className="mt-2">
+                                                  <div className="text-lg font-bold text-red-600 mb-2">
+                                                    {product.price.toLocaleString('tr-TR')} ₺
+                                                  </div>
+                                                  <div className="flex items-center">
+                                                    <span className={`w-3 h-3 rounded-full mr-2 ${product.stock > 0 ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                                    <span className="text-sm text-gray-600">
+                                                      {product.stock > 0 ? `Stokta (${product.stock})` : 'Tükendi'}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              }
+                                            />
+                                            <Button
+                                              type="primary"
+                                              block
+                                              onClick={() => {
+                                                addToCart(product);
+                                                notification.success({
+                                                  message: 'Ürün sepete eklendi',
+                                                  description: `${product.name} sepetinize eklendi.`,
+                                                });
+                                              }}
+                                              disabled={product.stock <= 0}
+                                              className="mt-4 bg-red-600 hover:bg-red-700 !rounded-button whitespace-nowrap"
+                                            >
+                                              Sepete Ekle
+                                            </Button>
+                                          </Card>
+                                        </Col>
+                                      ))}
+                                    </Row>
+                                  </div>
+                                )
+                              });
+                            }}
+                          >
+                            Kategoriyi Görüntüle
+                          </Button>
+                        </div>
+                      </div>
                     </Card>
                   </Col>
                 ))}
@@ -1314,7 +2025,7 @@ const App: React.FC = (): ReactElement | null => {
               <h2 className="text-3xl font-bold text-center mb-2">Öne Çıkan Ürünler</h2>
               <p className="text-gray-600 text-center mb-8">En çok tercih edilen yedek parçalar</p>
               <Row gutter={[24, 24]}>
-                {displayedProducts.map(product => (
+                {(showOnlyNew ? displayedProducts.filter(p => p.isNew) : displayedProducts).map(product => (
                   <Col xs={24} sm={12} lg={6} key={product.id}>
                     <Card
                       hoverable
@@ -1336,6 +2047,9 @@ const App: React.FC = (): ReactElement | null => {
                           <div className="absolute bottom-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-xs">
                             <i className="fas fa-images mr-1"></i> 3 Görsel
                           </div>
+                          {product.isNew && (
+                            <div className="absolute top-2 left-2 bg-green-600 text-white px-2 py-1 rounded text-xs font-bold shadow">Yeni</div>
+                          )}
                         </div>
                       }
                     >
@@ -1377,93 +2091,19 @@ const App: React.FC = (): ReactElement | null => {
                 ))}
               </Row>
               <div className="text-center mt-8">
-                <Button
-                  type="primary"
-                  size="large"
-                  onClick={() => {
-                    const additionalProductsRaw = [
-                      {
-                        id: 9,
-                        name: "Volkswagen Golf Arka Fren Diski",
-                        price: 680,
-                        category: "Mekanik",
-                        brand: "Volkswagen",
-                        image: "https://readdy.ai/api/search-image?query=A%20high-quality%20rear%20brake%20disc%20for%20Volkswagen%20Golf%2C%20automotive%20brake%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=31&orientation=landscape",
-                        stock: 28
-                      },
-                      {
-                        id: 10,
-                        name: "Toyota Corolla Debriyaj Seti",
-                        price: 1850,
-                        category: "Mekanik",
-                        brand: "Toyota",
-                        image: "https://readdy.ai/api/search-image?query=A%20complete%20clutch%20kit%20for%20Toyota%20Corolla%2C%20automotive%20transmission%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=32&orientation=landscape",
-                        stock: 12
-                      },
-                      {
-                        id: 11,
-                        name: "Honda Civic Ön Far",
-                        price: 1450,
-                        category: "Kaporta",
-                        brand: "Honda",
-                        image: "https://readdy.ai/api/search-image?query=A%20high-quality%20headlight%20for%20Honda%20Civic%2C%20automotive%20lighting%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=33&orientation=landscape",
-                        stock: 9
-                      },
-                      {
-                        id: 12,
-                        name: "Mercedes C-Serisi Yağ Filtresi",
-                        price: 220,
-                        category: "Mekanik",
-                        brand: "Mercedes",
-                        image: "https://readdy.ai/api/search-image?query=A%20premium%20oil%20filter%20for%20Mercedes%20C-Class%2C%20automotive%20engine%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=34&orientation=landscape",
-                        stock: 35
-                      },
-                      {
-                        id: 13,
-                        name: "BMW 3 Serisi Arka Tampon",
-                        price: 2100,
-                        category: "Kaporta",
-                        brand: "BMW",
-                        image: "https://readdy.ai/api/search-image?query=A%20high-quality%20rear%20bumper%20for%20BMW%203%20Series%2C%20automotive%20body%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20exterior%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=35&orientation=landscape",
-                        stock: 6
-                      },
-                      {
-                        id: 14,
-                        name: "Audi A3 Radyatör",
-                        price: 1680,
-                        category: "Mekanik",
-                        brand: "Audi",
-                        image: "https://readdy.ai/api/search-image?query=A%20high-performance%20radiator%20for%20Audi%20A3%2C%20automotive%20cooling%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=36&orientation=landscape",
-                        stock: 14
-                      },
-                      {
-                        id: 15,
-                        name: "Peugeot 301 Alternatör",
-                        price: 1290,
-                        category: "Mekanik",
-                        brand: "Peugeot",
-                        image: "https://readdy.ai/api/search-image?query=A%20high-quality%20alternator%20for%20Peugeot%20301%2C%20automotive%20electrical%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=37&orientation=landscape",
-                        stock: 17
-                      },
-                      {
-                        id: 16,
-                        name: "Opel Astra Direksiyon Kutusu",
-                        price: 2450,
-                        category: "Mekanik",
-                        brand: "Opel",
-                        image: "https://readdy.ai/api/search-image?query=A%20steering%20gear%20box%20for%20Opel%20Astra%2C%20automotive%20steering%20part%2C%20clean%20white%20background%2C%20professional%20product%20photography%2C%20detailed%20mechanical%20component%2C%20pristine%20condition%2C%20automotive%20aftermarket%20part%2C%20clear%20lighting&width=400&height=300&seq=38&orientation=landscape",
-                        stock: 8
-                      }
-                    ];
-                    const transformedAdditionalProducts = additionalProductsRaw.map(transformProduct);
-                    const updatedAllProducts = [...allProducts, ...transformedAdditionalProducts];
-                    setAllProducts(updatedAllProducts);
-                    shuffleAndShowProducts();
-                  }}
-                  className="bg-green-600 hover:bg-green-700 !rounded-button whitespace-nowrap"
-                >
-                  Tüm Ürünleri Görüntüle
-                </Button>
+                {hasMoreProducts ? (
+                  <button
+                    onClick={showMoreProducts}
+                    className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-button transition-colors duration-300"
+                  >
+                    Daha Fazla Ürün Göster
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-gray-600 text-lg font-medium">Tüm ürünler gösterildi</p>
+                    <p className="text-gray-500 text-sm">Toplam {totalProductCount} ürün listelendi</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1948,6 +2588,81 @@ const App: React.FC = (): ReactElement | null => {
               </p>
             </section>
           </div>
+        </Modal>
+
+        {/* Order Modal */}
+        <Modal
+          title="Teslimat Bilgileri"
+          open={orderModalVisible}
+          onCancel={() => setOrderModalVisible(false)}
+          onOk={handleOrderSubmit}
+          confirmLoading={orderLoading}
+          okText="Siparişi Onayla"
+          cancelText="İptal"
+        >
+          <Form
+            form={orderForm}
+            layout="vertical"
+            name="orderForm"
+          >
+            <Form.Item
+              name="name"
+              label="Ad Soyad"
+              rules={[{ required: true, message: 'Lütfen adınızı girin!' }]}
+            >
+              <Input placeholder="Adınız Soyadınız" />
+            </Form.Item>
+            <Form.Item
+              name="phone"
+              label="Telefon"
+              rules={[{ required: true, message: 'Lütfen telefon numaranızı girin!' }, { pattern: /^\d{10,15}$/, message: 'Geçerli bir telefon numarası girin!' }]}
+            >
+              <Input placeholder="5xxxxxxxxx" maxLength={15} />
+            </Form.Item>
+            <Form.Item
+              name="address"
+              label="Adres"
+              rules={[{ required: true, message: 'Lütfen adresinizi girin!' }]}
+            >
+              <Input.TextArea placeholder="Teslimat adresiniz" rows={3} />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        {/* Order Summary Modal */}
+        <Modal
+          title="Sipariş Özeti"
+          open={orderSummaryModalVisible}
+          onCancel={() => setOrderSummaryModalVisible(false)}
+          footer={[
+            <Button key="ok" type="primary" onClick={() => setOrderSummaryModalVisible(false)}>
+              Tamam
+            </Button>
+          ]}
+        >
+          {orderSummary && (
+            <div>
+              <div style={{marginBottom: 16}}>
+                <b>Sipariş Takip Kodu:</b> <span style={{color:'#dc2626', fontWeight:600}}>{orderSummary.code}</span>
+              </div>
+              <div style={{marginBottom: 16}}>
+                <b>Ad Soyad:</b> {orderSummary.name}<br/>
+                <b>Telefon:</b> {orderSummary.phone}<br/>
+                <b>Adres:</b> {orderSummary.address}
+              </div>
+              <div style={{marginBottom: 16}}>
+                <b>Ürünler:</b>
+                <ul style={{margin:0, paddingLeft:20}}>
+                  {orderSummary.items.map((item: any) => (
+                    <li key={item.id}>{item.name} x {item.quantity} ({item.price.toLocaleString('tr-TR')} ₺)</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <b>Toplam Tutar:</b> <span style={{color:'#dc2626', fontWeight:600}}>{orderSummary.total.toLocaleString('tr-TR')} ₺</span>
+              </div>
+            </div>
+          )}
         </Modal>
       </>
     </>
